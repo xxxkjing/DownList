@@ -171,7 +171,7 @@ class MusicDownloaderApp:
         self.total_progress = ft.ProgressBar(
             width=1500,
             value=0,
-            color=ft.colors.INDIGO,
+            color="indigo",
             bgcolor=None,
             bar_height=20
         )
@@ -179,7 +179,7 @@ class MusicDownloaderApp:
         self.file_progress = ft.ProgressBar(
             width=1500,
             value=0,
-            color=ft.colors.INDIGO,
+            color="indigo",
             bgcolor=None,
             bar_height=20
         )
