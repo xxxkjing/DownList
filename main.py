@@ -390,16 +390,19 @@ class MusicDownloaderApp:
                 return
 
             song_url = url_data['data'][0]['url']
-            file_extension = '.flac' if quality == 'lossless' else '.mp3'
-            file_path = os.path.join(download_dir, f"{song_name} - {artist_names}{file_extension}")
+            # 先使用临时文件路径下载
+            temp_file_path = os.path.join(download_dir, f"{song_name} - {artist_names}.temp")
+            
+            # 实际文件路径会在下载后根据内容类型确定
+            file_path = os.path.join(download_dir, f"{song_name} - {artist_names}")
 
-            if os.path.exists(file_path):
+            if os.path.exists(file_path + '.mp3') or os.path.exists(file_path + '.flac'):
                 logging.info(f"{song_name} 已存在，跳过下载")
                 return
 
-            self.download_file(song_url, file_path)
+            final_file_path, file_extension = self.download_file(song_url, file_path)
 
-            self.add_metadata(file_path, song_name, artist_names, album_name, cover_url, file_extension)
+            self.add_metadata(final_file_path, song_name, artist_names, album_name, cover_url, file_extension)
 
             if download_lyrics:
                 lyric_data = lyric_v1(song_id, cookies)
@@ -426,8 +429,11 @@ class MusicDownloaderApp:
         self.total_size = total_size
         self.downloaded_size = 0
         self.start_time = time.time()
-
-        with open(file_path, 'wb') as f:
+        
+        # 先下载到临时文件
+        temp_file_path = file_path + '.temp'
+        
+        with open(temp_file_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk and not self.is_paused:
                     f.write(chunk)
@@ -442,7 +448,22 @@ class MusicDownloaderApp:
                 elif self.is_paused:
                     time.sleep(0.1)
 
-        logging.info(f"成功下载文件：{file_path}")
+        # 检测文件类型并重命名为正确的扩展名
+        with open(temp_file_path, 'rb') as f:
+            header = f.read(4)
+        
+        # 根据文件头判断文件类型
+        file_extension = '.mp3'  # 默认mp3
+        if header.startswith(b'fLaC'):  # FLAC文件的文件头
+            file_extension = '.flac'
+        
+        # 重命名为正确的扩展名
+        final_file_path = file_path + file_extension
+        os.rename(temp_file_path, final_file_path)
+        
+        logging.info(f"成功下载文件：{final_file_path}")
+        
+        return final_file_path, file_extension
 
     def add_metadata(self, file_path, title, artist, album, cover_url, file_extension):
         try:
