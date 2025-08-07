@@ -1,3 +1,4 @@
 download.log
-cookie.txt
+*.txt
 *.pyc
+cookie.txt
