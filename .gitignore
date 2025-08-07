@@ -2,3 +2,6 @@ download.log
 *.txt
 *.pyc
 cookie.txt
+build/
+src/
+pyproject.toml

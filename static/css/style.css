@@ -1,0 +1,59 @@
+body {
+    font-family: 'Microsoft YaHei', sans-serif;
+    background-color: #f8f9fa;
+}
+
+.song-item {
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    padding: 1rem;
+    margin-bottom: 0.5rem;
+    background-color: white;
+    transition: box-shadow 0.15s ease-in-out;
+}
+
+.song-item:hover {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+.song-image {
+    width: 60px;
+    height: 60px;
+    object-fit: cover;
+    border-radius: 0.375rem;
+}
+
+.progress {
+    height: 20px;
+}
+
+.btn-group-custom {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.status-panel {
+    background-color: white;
+    border-radius: 0.375rem;
+    padding: 1rem;
+    margin-top: 1rem;
+    border: 1px solid #dee2e6;
+}
+
+.form-text a {
+    color: #0d6efd;
+    text-decoration: none;
+}
+
+.form-text a:hover {
+    text-decoration: underline;
+}
+
+.alert {
+    border-radius: 0.375rem;
+}
+
+#songList {
+    max-height: 600px;
+    overflow-y: auto;
+}

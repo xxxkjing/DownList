@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  netease-downloader:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./downloads:/app/downloads
+    environment:
+      - FLASK_ENV=production
+    restart: unless-stopped
+    container_name: netease-music-downloader
