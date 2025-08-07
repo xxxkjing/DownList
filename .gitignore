@@ -1,7 +1,8 @@
 download.log
-*.txt
 *.pyc
 cookie.txt
+.gitignore
+.DS_Store
 build/
 src/
 pyproject.toml
