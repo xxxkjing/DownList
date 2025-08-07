@@ -9,6 +9,8 @@
 
 ![](assets/display.png)
 
+![](assets/web.png)
+
 ### 特色
 
 **Cookie 登录 绕过每月400首额度 直接保存为 `MP3`、`FLAC`格式**
@@ -43,6 +45,12 @@
 git clone https://github.com/AyasukaRan/M163DownList
 cd M163DownList
 docker compose up -d
+```
+
+或者使用现有镜像
+
+```
+docker pull registry.cn-hangzhou.aliyuncs.com/ayanamiranpublic/m163downlist:1.0.1
 ```
 
 ## 开发环境
