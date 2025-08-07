@@ -3,3 +3,6 @@ download.log
 cookie.txt
 .gitignore
 .DS_Store
+build/
+src/
+pyproject.toml
