@@ -228,6 +228,11 @@ class MusicDownloaderApp:
         self.lyrics_checkbox = ft.Checkbox(label="下载歌词", value=False)
         self.dir_button = ft.ElevatedButton("选择下载目录", on_click=self.select_directory)
         self.dir_text = ft.Text(f"下载目录: {self.download_dir}")
+        
+        # 添加Cookie状态显示组件
+        self.cookie_status_text = ft.Text("正在检查 Cookie 状态...", color="orange")
+        self.refresh_cookie_button = ft.ElevatedButton("刷新 Cookie 状态", on_click=self.check_cookie_status)
+        
         self.parse_button = ft.ElevatedButton("解析歌单", on_click=self.parse_playlist)
         self.download_button = ft.ElevatedButton("开始下载", on_click=self.start_download, disabled=True)
         self.pause_button = ft.ElevatedButton("暂停", on_click=self.pause_download, disabled=True)
