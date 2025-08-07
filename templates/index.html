@@ -33,6 +33,21 @@
                            placeholder="https://music.163.com/playlist?id=...">
                 </div>
                 
+                <!-- 下载目录配置 -->
+                <div class="mb-3">
+                    <label for="downloadPath" class="form-label">下载目录</label>
+                    <div class="input-group">
+                        <input type="text" id="downloadPath" class="form-control" 
+                               placeholder="/app/downloads" value="/app/downloads">
+                        <button class="btn btn-outline-secondary" type="button" id="resetPathBtn">
+                            <i class="bi bi-arrow-clockwise"></i> 重置
+                        </button>
+                    </div>
+                    <div class="form-text">
+                        指定下载文件保存的目录路径。Docker环境建议使用 /app/downloads
+                    </div>
+                </div>
+                
                 <!-- 音质选择 -->
                 <div class="mb-3">
                     <label for="qualitySelect" class="form-label">音质选择</label>
@@ -58,6 +73,10 @@
                     <div class="form-check">
                         <input type="checkbox" id="downloadLyrics" class="form-check-input">
                         <label for="downloadLyrics" class="form-check-label">下载歌词</label>
+                    </div>
+                    <div class="form-check">
+                        <input type="checkbox" id="createSubfolder" class="form-check-input" checked>
+                        <label for="createSubfolder" class="form-check-label">为歌单创建子文件夹</label>
                     </div>
                 </div>
                 

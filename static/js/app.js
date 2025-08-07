@@ -4,10 +4,13 @@ let statusCheckInterval = null;
 // DOM 元素
 const cookieInput = document.getElementById('cookieInput');
 const playlistUrl = document.getElementById('playlistUrl');
+const downloadPath = document.getElementById('downloadPath');
+const resetPathBtn = document.getElementById('resetPathBtn');
 const qualitySelect = document.getElementById('qualitySelect');
 const concurrentRange = document.getElementById('concurrentRange');
 const concurrentValue = document.getElementById('concurrentValue');
 const downloadLyrics = document.getElementById('downloadLyrics');
+const createSubfolder = document.getElementById('createSubfolder');
 const parseBtn = document.getElementById('parseBtn');
 const downloadBtn = document.getElementById('downloadBtn');
 const pauseBtn = document.getElementById('pauseBtn');
@@ -24,6 +27,10 @@ const downloadZipBtn = document.getElementById('downloadZipBtn');
 // 事件监听器
 concurrentRange.addEventListener('input', (e) => {
     concurrentValue.textContent = e.target.value;
+});
+
+resetPathBtn.addEventListener('click', () => {
+    downloadPath.value = '/app/downloads';
 });
 
 parseBtn.addEventListener('click', parsePlaylist);
@@ -112,6 +119,8 @@ async function startDownload() {
     const quality = qualitySelect.value;
     const concurrent_count = parseInt(concurrentRange.value);
     const download_lyrics = downloadLyrics.checked;
+    const download_path = downloadPath.value.trim() || '/app/downloads';
+    const create_subfolder = createSubfolder.checked;
     
     try {
         const response = await fetch('/api/start_download', {
@@ -120,7 +129,8 @@ async function startDownload() {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                url, cookie, quality, concurrent_count, download_lyrics
+                url, cookie, quality, concurrent_count, download_lyrics, 
+                download_path, create_subfolder
             })
         });
         
@@ -243,14 +253,24 @@ function resetDownloadUI() {
 
 // 页面加载完成后的初始化
 document.addEventListener('DOMContentLoaded', () => {
-    // 从 localStorage 恢复 Cookie
+    // 从 localStorage 恢复配置
     const savedCookie = localStorage.getItem('netease_cookie');
+    const savedPath = localStorage.getItem('download_path');
+    
     if (savedCookie) {
         cookieInput.value = savedCookie;
     }
     
-    // 保存 Cookie 到 localStorage
+    if (savedPath) {
+        downloadPath.value = savedPath;
+    }
+    
+    // 保存配置到 localStorage
     cookieInput.addEventListener('blur', () => {
         localStorage.setItem('netease_cookie', cookieInput.value);
+    });
+    
+    downloadPath.addEventListener('blur', () => {
+        localStorage.setItem('download_path', downloadPath.value);
     });
 });

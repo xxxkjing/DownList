@@ -207,9 +207,15 @@ def start_download():
         quality = data.get('quality', 'standard')
         download_lyrics = data.get('download_lyrics', False)
         concurrent_count = data.get('concurrent_count', 3)
+        download_path = data.get('download_path', '/app/downloads').strip()
+        create_subfolder = data.get('create_subfolder', True)
         
         if download_status['is_downloading']:
             return jsonify({'success': False, 'message': '已有下载任务在进行中'})
+        
+        # 验证下载路径
+        if not download_path:
+            download_path = '/app/downloads'
         
         # 重置状态
         download_status.update({
@@ -227,7 +233,7 @@ def start_download():
         # 启动下载线程
         thread = threading.Thread(
             target=download_playlist_parallel,
-            args=(url, cookie_text, quality, download_lyrics, concurrent_count),
+            args=(url, cookie_text, quality, download_lyrics, concurrent_count, download_path, create_subfolder),
             daemon=True
         )
         thread.start()
@@ -483,7 +489,7 @@ def download_song(track, quality, download_lyrics, download_dir, cookies):
         logging.error(f"下载 {song_name} 失败：{str(e)}")
         return False
 
-def download_playlist_parallel(url, cookie_text, quality, download_lyrics, concurrent_count):
+def download_playlist_parallel(url, cookie_text, quality, download_lyrics, concurrent_count, download_path='/app/downloads', create_subfolder=True):
     global download_status, download_executor, download_futures
     
     try:
@@ -504,15 +510,19 @@ def download_playlist_parallel(url, cookie_text, quality, download_lyrics, concu
         for char in invalid_chars:
             playlist_name = playlist_name.replace(char, '')
         
-        # 根据运行环境调整路径
-        if os.path.exists('/app'):
-            download_dir = f'/app/downloads/{playlist_name}'
+        # 构建下载目录路径
+        if create_subfolder:
+            download_dir = os.path.join(download_path, playlist_name)
         else:
-            # 本地开发环境
-            downloads_base = os.path.join(os.getcwd(), 'downloads')
-            download_dir = os.path.join(downloads_base, playlist_name)
+            download_dir = download_path
         
-        os.makedirs(download_dir, exist_ok=True)
+        # 确保下载目录存在
+        try:
+            os.makedirs(download_dir, exist_ok=True)
+        except Exception as e:
+            download_status['error_message'] = f"无法创建下载目录：{str(e)}"
+            download_status['is_downloading'] = False
+            return
         
         download_status.update({
             'total_tracks': len(tracks),
@@ -580,19 +590,27 @@ def download_playlist_parallel(url, cookie_text, quality, download_lyrics, concu
             download_executor = None
 
 # 修复下载目录路径问题
-@app.route('/api/download_zip/<playlist_name>')
+@app.route('/api/download_zip/<path:playlist_name>')
 def download_zip(playlist_name):
     try:
-        # 根据运行环境调整路径
-        if os.path.exists('/app/downloads'):
-            download_dir = f'/app/downloads/{playlist_name}'
-            zip_path = f'/app/downloads/{playlist_name}.zip'
+        # 获取当前使用的下载路径
+        download_path = request.args.get('path', '/app/downloads')
+        
+        # 构建完整路径
+        if os.path.exists(download_path):
+            download_dir = os.path.join(download_path, playlist_name)
+            zip_path = os.path.join(download_path, f'{playlist_name}.zip')
         else:
-            # 本地开发环境
-            downloads_base = os.path.join(os.getcwd(), 'downloads')
-            os.makedirs(downloads_base, exist_ok=True)
-            download_dir = os.path.join(downloads_base, playlist_name)
-            zip_path = os.path.join(downloads_base, f'{playlist_name}.zip')
+            # 回退到默认路径
+            if os.path.exists('/app/downloads'):
+                download_dir = f'/app/downloads/{playlist_name}'
+                zip_path = f'/app/downloads/{playlist_name}.zip'
+            else:
+                # 本地开发环境
+                downloads_base = os.path.join(os.getcwd(), 'downloads')
+                os.makedirs(downloads_base, exist_ok=True)
+                download_dir = os.path.join(downloads_base, playlist_name)
+                zip_path = os.path.join(downloads_base, f'{playlist_name}.zip')
         
         if not os.path.exists(download_dir):
             return jsonify({'success': False, 'message': '文件夹不存在'})
@@ -609,6 +627,33 @@ def download_zip(playlist_name):
     except Exception as e:
         logging.error(f"创建下载包失败：{str(e)}")
         return jsonify({'success': False, 'message': f'创建下载包失败：{str(e)}'})
+
+# 添加新的API端点来检查目录权限
+@app.route('/api/check_directory', methods=['POST'])
+def check_directory():
+    try:
+        data = request.json
+        path = data.get('path', '').strip()
+        
+        if not path:
+            return jsonify({'success': False, 'message': '路径不能为空'})
+        
+        # 检查路径是否存在
+        if not os.path.exists(path):
+            try:
+                os.makedirs(path, exist_ok=True)
+                return jsonify({'success': True, 'message': '目录创建成功'})
+            except Exception as e:
+                return jsonify({'success': False, 'message': f'无法创建目录：{str(e)}'})
+        
+        # 检查是否有写权限
+        if not os.access(path, os.W_OK):
+            return jsonify({'success': False, 'message': '没有写入权限'})
+        
+        return jsonify({'success': True, 'message': '目录可用'})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'检查失败：{str(e)}'})
 
 def download_song_wrapper(track, quality, download_lyrics, download_dir, cookies):
     song_name = track['name']
