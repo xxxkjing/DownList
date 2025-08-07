@@ -19,6 +19,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 import uuid  # 添加uuid模块用于生成唯一标识符
+import webbrowser  # 添加浏览器模块
 
 # 设置日志
 logging.basicConfig(filename='download.log', level=logging.INFO, 
@@ -32,14 +33,50 @@ class CookieManager:
     def read_cookie(self):
         try:
             with open(self.cookie_file, 'r', encoding='utf-8') as f:
-                return f.read().strip()
+                content = f.read().strip()
+                if not content:
+                    raise Exception("cookie.txt 文件为空，请先登录网易云音乐获取 Cookie")
+                return content
         except FileNotFoundError:
-            raise Exception("未找到 cookie.txt，请运行 qr_login.py 获取 Cookie")
+            # 创建空的cookie文件
+            with open(self.cookie_file, 'w', encoding='utf-8') as f:
+                f.write("")
+            raise Exception("未找到 cookie.txt，已自动创建。请先登录网易云音乐获取 Cookie")
 
     def parse_cookie(self):
         cookie_text = self.read_cookie()
         cookie_ = [item.strip().split('=', 1) for item in cookie_text.split(';') if item]
         return {k.strip(): v.strip() for k, v in cookie_}
+
+    def check_and_create_cookie_file(self):
+        """检查cookie文件是否存在且不为空，如果不存在或为空则创建并打开浏览器"""
+        try:
+            if not os.path.exists(self.cookie_file):
+                # 文件不存在，创建空文件
+                with open(self.cookie_file, 'w', encoding='utf-8') as f:
+                    f.write("")
+                self._open_browser_for_login()
+                return False, "cookie.txt 文件不存在，已自动创建。请在打开的浏览器中登录网易云音乐，然后复制 Cookie 到 cookie.txt 文件中。"
+            
+            # 文件存在，检查是否为空
+            with open(self.cookie_file, 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+                if not content:
+                    self._open_browser_for_login()
+                    return False, "cookie.txt 文件为空，请在打开的浏览器中登录网易云音乐，然后复制 Cookie 到 cookie.txt 文件中。"
+            
+            return True, "Cookie 文件检查通过"
+            
+        except Exception as e:
+            return False, f"检查 Cookie 文件时出错：{str(e)}"
+
+    def _open_browser_for_login(self):
+        """打开默认浏览器到网易云音乐登录页面"""
+        try:
+            webbrowser.open('https://music.163.com')
+            logging.info("已打开浏览器到网易云音乐网站")
+        except Exception as e:
+            logging.error(f"打开浏览器失败：{str(e)}")
 
 # 网易云音乐 API 函数
 def post(url, params, cookies):
@@ -225,6 +262,7 @@ class MusicDownloaderApp:
             ft.Row([self.concurrent_text, self.concurrent_slider], alignment=ft.MainAxisAlignment.CENTER),
             ft.Row([self.dir_button], alignment=ft.MainAxisAlignment.CENTER),
             self.dir_text,
+            ft.Row([self.cookie_status_text, self.refresh_cookie_button], alignment=ft.MainAxisAlignment.CENTER),
             ft.Row([self.download_button, self.pause_button, self.resume_button, self.cancel_button], alignment=ft.MainAxisAlignment.CENTER),
             ft.Column([self.total_progress_text, self.total_progress]),
             ft.Column([self.file_progress_text, self.file_progress]),
@@ -232,6 +270,9 @@ class MusicDownloaderApp:
             ft.Text("歌曲预览:"),
             self.song_list
         )
+
+        # 初始化时检查Cookie状态
+        self.check_cookie_status(None)
 
     def on_concurrent_change(self, e):
         concurrent_count = int(self.concurrent_slider.value)
@@ -250,10 +291,29 @@ class MusicDownloaderApp:
             self.dir_text.value = f"下载目录: {self.download_dir}"
             self.page.update()
 
+    def check_cookie_status(self, e):
+        """检查Cookie状态"""
+        is_valid, message = self.cookie_manager.check_and_create_cookie_file()
+        if is_valid:
+            self.cookie_status_text.value = "Cookie 状态: ✓ 正常"
+            self.cookie_status_text.color = "green"
+        else:
+            self.cookie_status_text.value = f"Cookie 状态: ✗ {message}"
+            self.cookie_status_text.color = "red"
+        self.page.update()
+
     def parse_playlist(self, e):
         url = self.url_input.value.strip()
         if not url:
             self.page.snack_bar = ft.SnackBar(ft.Text("请输入歌单 URL"))
+            self.page.snack_bar.open = True
+            self.page.update()
+            return
+
+        # 解析前先检查Cookie状态
+        is_valid, message = self.cookie_manager.check_and_create_cookie_file()
+        if not is_valid:
+            self.page.snack_bar = ft.SnackBar(ft.Text(message))
             self.page.snack_bar.open = True
             self.page.update()
             return
@@ -298,6 +358,14 @@ class MusicDownloaderApp:
     def start_download(self, e):
         if not self.tracks:
             self.page.snack_bar = ft.SnackBar(ft.Text("请先解析歌单"))
+            self.page.snack_bar.open = True
+            self.page.update()
+            return
+
+        # 下载前再次检查Cookie状态
+        is_valid, message = self.cookie_manager.check_and_create_cookie_file()
+        if not is_valid:
+            self.page.snack_bar = ft.SnackBar(ft.Text(message))
             self.page.snack_bar.open = True
             self.page.update()
             return
