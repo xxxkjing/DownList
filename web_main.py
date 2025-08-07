@@ -295,26 +295,193 @@ def cancel_download():
 def get_download_status():
     return jsonify(download_status)
 
-@app.route('/api/download_zip/<playlist_name>')
-def download_zip(playlist_name):
+def download_file(url, file_path):
+    session = requests.Session()
+    retries = requests.adapters.Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
+    session.mount('http://', requests.adapters.HTTPAdapter(max_retries=retries))
+    session.mount('https://', requests.adapters.HTTPAdapter(max_retries=retries))
+    
     try:
-        download_dir = f'/app/downloads/{playlist_name}'
-        if not os.path.exists(download_dir):
-            return jsonify({'success': False, 'message': '文件夹不存在'})
-        
-        zip_path = f'/app/downloads/{playlist_name}.zip'
-        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for root, dirs, files in os.walk(download_dir):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    arcname = os.path.relpath(file_path, download_dir)
-                    zipf.write(file_path, arcname)
-        
-        return send_file(zip_path, as_attachment=True, download_name=f'{playlist_name}.zip')
-        
+        response = session.get(url, stream=True, timeout=10)
+        response.raise_for_status()
     except Exception as e:
-        logging.error(f"创建下载包失败：{str(e)}")
-        return jsonify({'success': False, 'message': f'创建下载包失败：{str(e)}'})
+        logging.error(f"下载请求失败：{str(e)}")
+        raise
+
+    total_size = int(response.headers.get('content-length', 0))
+    downloaded_size = 0
+    
+    # 使用UUID生成唯一的临时文件名，避免多线程冲突
+    unique_id = str(uuid.uuid4())[:8]
+    temp_file_path = file_path + f'.temp_{unique_id}'
+    
+    try:
+        with open(temp_file_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if download_status['is_paused']:
+                    # 如果暂停，直接退出下载
+                    break
+                if chunk:
+                    f.write(chunk)
+                    downloaded_size += len(chunk)
+    except Exception as e:
+        logging.error(f"写入文件失败：{str(e)}")
+        if os.path.exists(temp_file_path):
+            try:
+                os.remove(temp_file_path)
+            except:
+                pass
+        raise
+
+    # 如果下载被暂停，清理临时文件
+    if download_status['is_paused']:
+        if os.path.exists(temp_file_path):
+            try:
+                os.remove(temp_file_path)
+            except:
+                pass
+        return None, None
+
+    # 检测文件类型并重命名为正确的扩展名
+    try:
+        with open(temp_file_path, 'rb') as f:
+            header = f.read(4)
+        
+        # 根据文件头判断文件类型
+        file_extension = '.mp3'  # 默认mp3
+        if header.startswith(b'fLaC'):  # FLAC文件的文件头
+            file_extension = '.flac'
+        
+        # 重命名为正确的扩展名
+        final_file_path = file_path + file_extension
+        
+        # 如果目标文件已存在，删除它
+        if os.path.exists(final_file_path):
+            try:
+                os.remove(final_file_path)
+            except:
+                pass
+        
+        os.rename(temp_file_path, final_file_path)
+        
+        logging.info(f"成功下载文件：{final_file_path}")
+        
+        return final_file_path, file_extension
+    except Exception as e:
+        logging.error(f"处理下载文件失败：{str(e)}")
+        if os.path.exists(temp_file_path):
+            try:
+                os.remove(temp_file_path)
+            except:
+                pass
+        raise
+
+def add_metadata(file_path, title, artist, album, cover_url, file_extension):
+    try:
+        if file_extension == '.flac':
+            audio = FLAC(file_path)
+            audio['title'] = title
+            audio['artist'] = artist
+            audio['album'] = album
+            if cover_url:
+                try:
+                    cover_response = requests.get(cover_url, timeout=5)
+                    cover_response.raise_for_status()
+                    image = Image.open(io.BytesIO(cover_response.content))
+                    image = image.convert('RGB')
+                    image = image.resize((300, 300))
+                    img_byte_arr = io.BytesIO()
+                    image.save(img_byte_arr, format='JPEG')
+                    img_data = img_byte_arr.getvalue()
+                    from mutagen.flac import Picture
+                    picture = Picture()
+                    picture.type = 3  # 封面图片类型
+                    picture.mime = 'image/jpeg'
+                    picture.desc = 'Front Cover'
+                    picture.data = img_data
+                    audio.add_picture(picture)
+                except Exception as e:
+                    logging.error(f"添加FLAC封面失败：{str(e)}")
+            audio.save()
+        else:  # MP3 格式
+            audio = MP3(file_path, ID3=EasyID3)
+            audio['title'] = title
+            audio['artist'] = artist
+            audio['album'] = album
+            audio.save()
+            if cover_url:
+                try:
+                    cover_response = requests.get(cover_url, timeout=5)
+                    cover_response.raise_for_status()
+                    image = Image.open(io.BytesIO(cover_response.content))
+                    image = image.convert('RGB')
+                    image = image.resize((300, 300))
+                    img_byte_arr = io.BytesIO()
+                    image.save(img_byte_arr, format='JPEG')
+                    img_data = img_byte_arr.getvalue()
+                    audio = ID3(file_path)
+                    audio.add(APIC(mime='image/jpeg', data=img_data))
+                    audio.save()
+                except Exception as e:
+                    logging.error(f"添加MP3封面失败：{str(e)}")
+        logging.info(f"成功嵌入元数据：{file_path}")
+    except Exception as e:
+        logging.error(f"嵌入元数据失败：{file_path}，错误：{str(e)}")
+
+def download_song(track, quality, download_lyrics, download_dir, cookies):
+    song_id = str(track['id'])
+    song_name = track['name']
+    
+    # 清理文件名中的无效字符
+    invalid_chars = '<>:"/\\|?*'
+    for char in invalid_chars:
+        song_name = song_name.replace(char, '')
+        track['artists'] = track['artists'].replace(char, '')
+        track['album'] = track['album'].replace(char, '')
+
+    try:
+        song_info = name_v1(song_id)['songs'][0]
+        artist_names = track['artists']
+        album_name = track['album']
+        cover_url = song_info['al'].get('picUrl', '')
+
+        url_data = url_v1(song_id, quality, cookies)
+        if not url_data.get('data') or not url_data['data'][0].get('url'):
+            logging.warning(f"无法下载 {song_name}，可能是 VIP 限制或音质不可用")
+            return False
+
+        song_url = url_data['data'][0]['url']
+        file_path = os.path.join(download_dir, f"{song_name} - {artist_names}")
+
+        # 检查文件是否已存在
+        if os.path.exists(file_path + '.mp3') or os.path.exists(file_path + '.flac'):
+            logging.info(f"{song_name} 已存在，跳过下载")
+            return True
+
+        final_file_path, file_extension = download_file(song_url, file_path)
+        
+        if final_file_path and file_extension:
+            add_metadata(final_file_path, song_name, artist_names, album_name, cover_url, file_extension)
+
+            if download_lyrics:
+                try:
+                    lyric_data = lyric_v1(song_id, cookies)
+                    lyric = lyric_data.get('lrc', {}).get('lyric', '')
+                    if lyric:
+                        lyric_path = os.path.join(download_dir, f"{song_name} - {artist_names}.lrc")
+                        with open(lyric_path, 'w', encoding='utf-8') as f:
+                            f.write(lyric)
+                        logging.info(f"已下载歌词：{song_name}")
+                except Exception as e:
+                    logging.error(f"下载歌词失败：{song_name}，错误：{str(e)}")
+            
+            return True
+        else:
+            return False
+
+    except Exception as e:
+        logging.error(f"下载 {song_name} 失败：{str(e)}")
+        return False
 
 def download_playlist_parallel(url, cookie_text, quality, download_lyrics, concurrent_count):
     global download_status, download_executor, download_futures
@@ -337,7 +504,14 @@ def download_playlist_parallel(url, cookie_text, quality, download_lyrics, concu
         for char in invalid_chars:
             playlist_name = playlist_name.replace(char, '')
         
-        download_dir = f'/app/downloads/{playlist_name}'
+        # 根据运行环境调整路径
+        if os.path.exists('/app'):
+            download_dir = f'/app/downloads/{playlist_name}'
+        else:
+            # 本地开发环境
+            downloads_base = os.path.join(os.getcwd(), 'downloads')
+            download_dir = os.path.join(downloads_base, playlist_name)
+        
         os.makedirs(download_dir, exist_ok=True)
         
         download_status.update({
@@ -345,12 +519,30 @@ def download_playlist_parallel(url, cookie_text, quality, download_lyrics, concu
             'playlist_name': playlist_name
         })
         
+        # 过滤出还没下载的歌曲
+        remaining_tracks = []
+        for track in tracks:
+            if download_status['is_paused']:
+                break
+                
+            song_name = track['name']
+            artist_names = track['artists']
+            
+            # 清理文件名
+            for char in invalid_chars:
+                song_name = song_name.replace(char, '')
+                artist_names = artist_names.replace(char, '')
+            
+            file_path = os.path.join(download_dir, f"{song_name} - {artist_names}")
+            if not (os.path.exists(file_path + '.mp3') or os.path.exists(file_path + '.flac')):
+                remaining_tracks.append(track)
+        
         # 创建线程池
         download_executor = ThreadPoolExecutor(max_workers=concurrent_count)
         
         # 提交下载任务
         download_futures = []
-        for track in tracks:
+        for track in remaining_tracks:
             if download_status['is_paused']:
                 break
             future = download_executor.submit(
@@ -387,18 +579,50 @@ def download_playlist_parallel(url, cookie_text, quality, download_lyrics, concu
             download_executor.shutdown(wait=True)
             download_executor = None
 
+# 修复下载目录路径问题
+@app.route('/api/download_zip/<playlist_name>')
+def download_zip(playlist_name):
+    try:
+        # 根据运行环境调整路径
+        if os.path.exists('/app/downloads'):
+            download_dir = f'/app/downloads/{playlist_name}'
+            zip_path = f'/app/downloads/{playlist_name}.zip'
+        else:
+            # 本地开发环境
+            downloads_base = os.path.join(os.getcwd(), 'downloads')
+            os.makedirs(downloads_base, exist_ok=True)
+            download_dir = os.path.join(downloads_base, playlist_name)
+            zip_path = os.path.join(downloads_base, f'{playlist_name}.zip')
+        
+        if not os.path.exists(download_dir):
+            return jsonify({'success': False, 'message': '文件夹不存在'})
+        
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for root, dirs, files in os.walk(download_dir):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, download_dir)
+                    zipf.write(file_path, arcname)
+        
+        return send_file(zip_path, as_attachment=True, download_name=f'{playlist_name}.zip')
+        
+    except Exception as e:
+        logging.error(f"创建下载包失败：{str(e)}")
+        return jsonify({'success': False, 'message': f'创建下载包失败：{str(e)}'})
+
 def download_song_wrapper(track, quality, download_lyrics, download_dir, cookies):
     song_name = track['name']
     download_status['current_song'] = song_name
     
     return download_song(track, quality, download_lyrics, download_dir, cookies)
 
-def download_song(track, quality, download_lyrics, download_dir, cookies):
-    # ...existing download logic from original file...
-    # 这里包含原来的下载逻辑，为了简洁我省略了具体实现
-    # 实际实现时需要包含完整的下载、元数据处理等功能
-    pass
-
 if __name__ == '__main__':
-    os.makedirs('/app/downloads', exist_ok=True)
+    # 创建下载目录
+    if os.path.exists('/app'):
+        os.makedirs('/app/downloads', exist_ok=True)
+    else:
+        # 本地开发环境
+        downloads_dir = os.path.join(os.getcwd(), 'downloads')
+        os.makedirs(downloads_dir, exist_ok=True)
+    
     app.run(host='0.0.0.0', port=5000, debug=False)
