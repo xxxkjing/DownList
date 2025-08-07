@@ -1,5 +1,4 @@
 download.log
-*.txt
 *.pyc
 cookie.txt
 .gitignore
