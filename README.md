@@ -35,6 +35,16 @@
 
 5. Enjoy :D
 
+## docker 部署
+
+默认端口为 5000，可以自行修改 docker-compose.yml 中的映射
+
+```
+git clone https://github.com/AyasukaRan/M163DownList
+cd M163DownList
+docker compose up -d
+```
+
 ## 开发环境
 
 Python >= 3.10
@@ -46,8 +56,7 @@ Python >= 3.10
 - [x] 优化jy*等格式元数据写入，现在 flac 的封面等信息可以正常写入
 - [x] 实现多线程下载，支持 1-10 并发下载，个人测试 10 并发下载，可以到 5Gbps 左右下载速度
 - [x] 优化 cookie 文件，现在会在 gui 显示 cookie 状态，同时检查本地是否存在 cookie，没有会自动创建并跳转网易云
-
-
+- [x] 支持 docker 部署
 
 ## 备注
 
