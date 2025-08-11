@@ -1,8 +1,0 @@
-download.log
-*.pyc
-cookie.txt
-.gitignore
-.DS_Store
-build/
-src/
-pyproject.toml
