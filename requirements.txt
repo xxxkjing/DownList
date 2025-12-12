@@ -1,0 +1,13 @@
+# 核心依赖
+flet>=0.28.0
+requests>=2.31.0
+cryptography>=41.0.0
+mutagen>=1.47.0
+Pillow>=10.0.0
+
+# v2.1 新增依赖
+pypinyin>=0.55.0
+selenium>=4.39.0
+
+# 打包工具（可选）
+# pyinstaller>=6.0.0
